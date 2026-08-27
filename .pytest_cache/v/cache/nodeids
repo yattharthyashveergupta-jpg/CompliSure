@@ -1,0 +1,21 @@
+[
+  "backend/tests/test_api_endpoints.py::test_chat_grounded_answer",
+  "backend/tests/test_api_endpoints.py::test_chat_unanswerable_refusal",
+  "backend/tests/test_api_endpoints.py::test_evaluation_run",
+  "backend/tests/test_api_endpoints.py::test_health_endpoint",
+  "backend/tests/test_api_endpoints.py::test_list_documents",
+  "backend/tests/test_api_endpoints.py::test_safeguards_configuration",
+  "backend/tests/test_chunking_service.py::test_chunking_avoids_empty_text",
+  "backend/tests/test_chunking_service.py::test_chunking_preserves_page_metadata",
+  "backend/tests/test_pdf_service.py::test_pdf_corrupted_bytes_raises_error",
+  "backend/tests/test_pdf_service.py::test_pdf_empty_bytes_raises_error",
+  "backend/tests/test_pdf_service.py::test_pdf_extraction_valid_document",
+  "backend/tests/test_retrieval_and_threshold.py::test_evidence_threshold_gating",
+  "backend/tests/test_retrieval_and_threshold.py::test_vector_store_retrieval_ranking",
+  "backend/tests/test_safeguard_modes.py::test_mode_1_baseline_always_answers_even_unsupported",
+  "backend/tests/test_safeguard_modes.py::test_mode_3_refuses_unanswerable_question",
+  "backend/tests/test_safeguard_modes.py::test_mode_4_answers_grounded_question_with_verified_citation",
+  "backend/tests/test_verification_and_refusal.py::test_safe_refusal_factory",
+  "backend/tests/test_verification_and_refusal.py::test_verification_passes_grounded_answer",
+  "backend/tests/test_verification_and_refusal.py::test_verification_rejects_hallucinated_amounts"
+]

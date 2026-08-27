@@ -1,0 +1,3 @@
+{
+  "backend/tests/test_api_endpoints.py::test_chat_unanswerable_refusal": true
+}

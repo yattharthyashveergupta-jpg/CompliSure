@@ -1,0 +1,6 @@
+{
+  "name": "CompliSure",
+  "description": "Evidence-grounded compliance AI safeguards dashboard and assistant.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
