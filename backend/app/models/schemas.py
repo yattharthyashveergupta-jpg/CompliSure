@@ -15,6 +15,20 @@ class SafeguardMode(str, Enum):
     RAG_THRESHOLD = "rag_threshold"
     RAG_THRESHOLD_VERIFICATION = "rag_threshold_verification"
 
+    @classmethod
+    def _missing_(cls, value):
+        if isinstance(value, str):
+            val_norm = value.lower().strip().replace("-", "_").replace(" ", "_")
+            if val_norm in ("baseline", "baseline_llm", "llm"):
+                return cls.BASELINE_LLM
+            if val_norm in ("rag", "standard_rag"):
+                return cls.RAG
+            if val_norm in ("rag_threshold", "evidence_threshold", "threshold"):
+                return cls.RAG_THRESHOLD
+            if val_norm in ("rag_threshold_verification", "rag_verification", "verification", "verified"):
+                return cls.RAG_THRESHOLD_VERIFICATION
+        return super()._missing_(value)
+
 
 class DecisionType(str, Enum):
     """High-level system decision."""
@@ -119,6 +133,10 @@ class ChatRequest(BaseModel):
         description="Override minimum evidence relevance threshold [0.0 - 1.0]"
     )
     top_k: Optional[int] = Field(default=None, ge=1, le=20, description="Top-k chunks to retrieve")
+    min_supporting_chunks: Optional[int] = Field(default=None, ge=1, le=10, description="Minimum qualifying chunks required")
+    require_source_citation: Optional[bool] = Field(default=None, description="Enforce mandatory source citations")
+    enable_answer_verification: Optional[bool] = Field(default=None, description="Enable second-stage factual verification")
+    allow_unsupported_answers: Optional[bool] = Field(default=None, description="Allow speculative answers with disclaimer instead of refusing")
     session_id: Optional[str] = None
 
 
@@ -157,6 +175,7 @@ class SafeguardConfig(BaseModel):
     allow_unsupported_answers: bool = False
     default_mode: SafeguardMode = SafeguardMode.RAG_THRESHOLD_VERIFICATION
     top_k: int = Field(5, ge=1, le=20)
+    min_supporting_chunks: int = Field(1, ge=1, le=10)
     chunk_size: int = Field(400, ge=100, le=2000)
     chunk_overlap: int = Field(50, ge=0, le=500)
 

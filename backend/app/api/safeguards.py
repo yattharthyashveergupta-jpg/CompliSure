@@ -17,6 +17,7 @@ _active_config = SafeguardConfig(
     allow_unsupported_answers=settings.ALLOW_UNSUPPORTED_ANSWERS,
     default_mode=SafeguardMode(settings.DEFAULT_SAFEGUARD_MODE),
     top_k=settings.DEFAULT_TOP_K,
+    min_supporting_chunks=settings.MIN_SUPPORTING_CHUNKS,
     chunk_size=settings.CHUNK_SIZE,
     chunk_overlap=settings.CHUNK_OVERLAP
 )
@@ -50,9 +51,12 @@ def update_safeguard_config(config: SafeguardConfig):
     settings.ALLOW_UNSUPPORTED_ANSWERS = config.allow_unsupported_answers
     settings.DEFAULT_SAFEGUARD_MODE = config.default_mode.value
     settings.DEFAULT_TOP_K = config.top_k
+    settings.MIN_SUPPORTING_CHUNKS = config.min_supporting_chunks
+    settings.CHUNK_SIZE = config.chunk_size
+    settings.CHUNK_OVERLAP = config.chunk_overlap
 
     logger.info(
         f"Updated Safeguards | Threshold: {config.evidence_threshold:.2f} | "
-        f"Verification: {config.enable_answer_verification} | Default Mode: {config.default_mode}"
+        f"Verification: {config.enable_answer_verification} | Min Chunks: {config.min_supporting_chunks} | Default Mode: {config.default_mode}"
     )
     return _active_config

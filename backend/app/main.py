@@ -1,36 +1,35 @@
 """
-CompliSure FastAPI Application Entry Point.
-Evidence-grounded compliance AI safeguards system.
+CompliSure Backend Application Entry Point.
+Evidence-grounded compliance AI assistant preventing confident wrong answers.
 """
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+import time
 
 from backend.app.config import settings
+from backend.app.utils.logging import logger
 from backend.app.models.database import init_db, SessionLocal
 from backend.app.services.document_service import document_service
 from backend.app.api.documents import router as documents_router
 from backend.app.api.chat import router as chat_router
 from backend.app.api.safeguards import router as safeguards_router
 from backend.app.api.evaluation import router as evaluation_router
-from backend.app.utils.logging import logger
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Lifecycle manager for startup and shutdown routines."""
+    """Application lifespan context manager: handles startup and shutdown."""
     logger.info("Initializing CompliSure Database and Knowledge Base...")
-    init_db()
-    
-    # Initialize sample compliance documents in database and vector store
-    db = SessionLocal()
     try:
+        init_db()
+        db = SessionLocal()
+        # Seed with initial benchmark policies if empty
         document_service.initialize_sample_documents(db)
-    except Exception as e:
-        logger.error(f"Error during initial sample documents loading: {e}")
-    finally:
         db.close()
+    except Exception as e:
+        logger.error(f"Error during startup initialization: {e}")
 
     logger.info("CompliSure Backend is ready.")
     yield
@@ -83,8 +82,11 @@ def health_check():
     """API health probe endpoint."""
     return {
         "status": "healthy",
+        "version": "1.0.0",
         "database": "connected",
-        "safeguards_active": True
+        "safeguards_active": True,
+        "active_model": settings.GEMINI_MODEL,
+        "evidence_threshold": settings.DEFAULT_EVIDENCE_THRESHOLD
     }
 
 

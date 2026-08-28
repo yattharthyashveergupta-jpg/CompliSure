@@ -1,28 +1,13 @@
 """
-Embedding Service.
-Produces semantic vector embeddings using Google GenAI SDK with high-grade local fallback.
+Embedding Service for CompliSure.
+Produces semantic dense vector embeddings with unified Google GenAI support and deterministic local embeddings.
 """
-from typing import List, Union, Optional
-import math
+from typing import List, Union
 import re
 import numpy as np
 from backend.app.config import settings
+from backend.app.services.llm_client import genai_manager
 from backend.app.utils.logging import logger
-
-try:
-    from google import genai
-    from google.genai import types
-    HAS_GENAI = True
-except ImportError:
-    HAS_GENAI = False
-
-
-def is_valid_gemini_key(key: Optional[str]) -> bool:
-    """Checks if API key is a realistically configured Google Gemini key."""
-    if not key:
-        return False
-    k = key.strip()
-    return len(k) >= 20 and not k.startswith("your_") and not k.startswith("test_") and not k.startswith("mock_")
 
 
 class EmbeddingService:
@@ -30,16 +15,6 @@ class EmbeddingService:
 
     def __init__(self):
         self.embedding_model = settings.EMBEDDING_MODEL
-        self._client = None
-        self._remote_failed = False
-        api_key = settings.GEMINI_API_KEY
-        if HAS_GENAI and is_valid_gemini_key(api_key):
-            try:
-                self._client = genai.Client(api_key=api_key.strip())
-                logger.info(f"Initialized Google GenAI Embeddings client with model: {self.embedding_model}")
-            except Exception as e:
-                logger.warning(f"Could not initialize Google GenAI Client for embeddings: {e}")
-                self._client = None
 
     def embed_text(self, text: str) -> List[float]:
         """Embeds a single string into a normalized dense vector."""
@@ -50,13 +25,14 @@ class EmbeddingService:
         if not texts:
             return []
 
-        # If Google GenAI client is available and API key is set and hasn't failed
-        if self._client and not self._remote_failed:
+        # If Google GenAI client is available and active
+        if genai_manager.is_remote_active:
             try:
+                client = genai_manager.client
                 embeddings = []
                 for text in texts:
                     clean_text = text.strip() or "empty"
-                    response = self._client.models.embed_content(
+                    response = client.models.embed_content(
                         model=self.embedding_model,
                         contents=clean_text
                     )
@@ -69,8 +45,7 @@ class EmbeddingService:
                     embeddings.append(self._normalize(vec))
                 return embeddings
             except Exception as e:
-                # If remote embedding fails, disable remote and use instant local dense vectorizer
-                self._remote_failed = True
+                genai_manager.mark_remote_failed(e)
 
         # Local deterministic semantic dense embedding
         return [self._normalize(self._local_dense_embed(t)) for t in texts]
@@ -87,7 +62,6 @@ class EmbeddingService:
             return vec.tolist()
 
         for i, token in enumerate(raw_tokens):
-            # Base token
             stem = re.sub(r"(?:ing|ed|es|s)$", "", token) if len(token) > 3 else token
             
             idx1 = abs(hash(token)) % dim

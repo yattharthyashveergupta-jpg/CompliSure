@@ -56,13 +56,20 @@ class VectorStore:
         query_emb = np.array(embedding_service.embed_text(query), dtype=np.float32)
 
         results = []
-        for chunk_id, emb_list in self.embeddings.items():
+        for chunk_id, emb_list in list(self.embeddings.items()):
+            if chunk_id not in self.chunks:
+                continue
             chunk = self.chunks[chunk_id]
             if document_id and chunk.document_id != document_id:
                 continue
 
             chunk_emb = np.array(emb_list, dtype=np.float32)
-            
+            # Handle dimension mismatch if switched embedding backend
+            if query_emb.shape[0] != chunk_emb.shape[0]:
+                new_emb = np.array(embedding_service.embed_text(chunk.text), dtype=np.float32)
+                self.embeddings[chunk_id] = new_emb.tolist()
+                chunk_emb = new_emb
+
             # Cosine similarity for unit-normalized vectors: dot product
             dot = float(np.dot(query_emb, chunk_emb))
             cosine_sim = max(0.0, min(1.0, dot))
@@ -70,17 +77,16 @@ class VectorStore:
             # Exact lexical policy term overlap
             lexical_overlap = self._lexical_overlap(query, chunk.text)
 
-            # High-fidelity hybrid fusion
-            if lexical_overlap >= 0.50:
-                lexical_score = 0.78 + (lexical_overlap - 0.50) * 0.40
-            elif lexical_overlap >= 0.25:
-                lexical_score = 0.55 + (lexical_overlap - 0.25) * 0.90
-            elif lexical_overlap > 0:
-                lexical_score = 0.25 + lexical_overlap * 1.0
+            # Balanced hybrid relevance weighting: semantic similarity + lexical token overlap
+            if lexical_overlap >= 0.65:
+                final_relevance = cosine_sim * 0.35 + lexical_overlap * 0.65 + 0.05
+            elif lexical_overlap >= 0.40:
+                final_relevance = cosine_sim * 0.50 + lexical_overlap * 0.50
+            elif lexical_overlap >= 0.20:
+                final_relevance = cosine_sim * 0.60 + lexical_overlap * 0.40
             else:
-                lexical_score = 0.05
+                final_relevance = min(cosine_sim * 0.65, 0.45)
 
-            final_relevance = max(cosine_sim, lexical_score)
             final_relevance = min(0.98, max(0.05, final_relevance))
 
             results.append(RetrievedChunk(chunk=chunk, relevance_score=round(final_relevance, 4)))
@@ -90,16 +96,33 @@ class VectorStore:
         return results[:top_k]
 
     def _lexical_overlap(self, query: str, text: str) -> float:
-        """Calculates content token overlap ratio between query and text using stems."""
-        stopwords = {"what", "is", "the", "for", "and", "or", "in", "at", "to", "a", "an", "of", "on", "can", "how", "many", "do", "does", "be", "with", "from"}
+        """Calculates semantic and token overlap ratio between query and text using normalized stems."""
+        stopwords = {
+            "what", "is", "the", "for", "and", "or", "in", "at", "to", "a", "an", "of", "on",
+            "can", "how", "many", "do", "does", "be", "with", "from", "which", "are", "per",
+            "any", "all", "should", "must", "may", "about", "could", "would", "under"
+        }
+        synonyms = {
+            "maximum": "limit", "max": "limit", "limits": "limit", "limit": "limit", "cap": "limit", "ceiling": "limit",
+            "minimum": "min", "min": "min", "floor": "min",
+            "reimbursement": "reimburse", "reimburse": "reimburse", "reimbursable": "reimburse", "reimbursed": "reimburse",
+            "travel": "travel", "traveling": "travel", "travels": "travel", "trip": "travel",
+            "permitted": "allow", "allowed": "allow", "allowable": "allow", "allow": "allow",
+            "prohibited": "prohibit", "forbidden": "prohibit", "banned": "prohibit", "prohibitions": "prohibit",
+            "retention": "retain", "retained": "retain", "retain": "retain", "period": "retain", "timeline": "retain",
+            "preapproval": "approval", "approval": "approval", "approved": "approval", "authorize": "approval",
+            "credentials": "password", "passwords": "password", "credential": "password", "accounts": "password",
+            "expenses": "reimburse", "expense": "reimburse", "expenditure": "reimburse",
+        }
+
         q_raw = [w for w in re.findall(r"\b[a-z0-9]+\b", query.lower()) if w not in stopwords and len(w) >= 3]
         t_raw = [w for w in re.findall(r"\b[a-z0-9]+\b", text.lower()) if w not in stopwords and len(w) >= 3]
         
         if not q_raw:
             return 0.0
 
-        q_stems = {re.sub(r"(?:ing|ed|es|s)$", "", w) for w in q_raw}
-        t_stems = {re.sub(r"(?:ing|ed|es|s)$", "", w) for w in t_raw}
+        q_stems = {synonyms.get(w, re.sub(r"(?:ing|ed|es|s)$", "", w)) for w in q_raw}
+        t_stems = {synonyms.get(w, re.sub(r"(?:ing|ed|es|s)$", "", w)) for w in t_raw}
         
         overlap = len(q_stems.intersection(t_stems))
         return overlap / len(q_stems)

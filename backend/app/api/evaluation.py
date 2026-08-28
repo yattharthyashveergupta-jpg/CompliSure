@@ -64,3 +64,13 @@ def get_evaluation_results(db: Session = Depends(get_db)):
 def get_test_cases():
     """Returns the complete benchmark dataset of answerable, unanswerable, paraphrased, and ambiguous test cases."""
     return BENCHMARK_DATASET
+
+
+@router.get(
+    "/benchmark-cases",
+    response_model=List[EvaluationTestCase],
+    include_in_schema=False
+)
+def get_benchmark_cases_alias():
+    """Alias for /test-cases."""
+    return BENCHMARK_DATASET

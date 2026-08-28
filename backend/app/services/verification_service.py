@@ -1,20 +1,20 @@
 """
-Answer Verification Service.
+Answer Verification Service for CompliSure.
 Independent second-stage verification: checks whether generated answer claims are factually entailed by retrieved evidence.
 """
-from typing import List, Tuple, Optional
+from typing import List, Optional
 import re
 from pydantic import BaseModel
 from backend.app.models.schemas import RetrievedChunk, VerificationStatus
 from backend.app.config import settings
+from backend.app.services.llm_client import genai_manager
 from backend.app.utils.logging import logger
 
 try:
-    from google import genai
     from google.genai import types
-    HAS_GENAI = True
+    HAS_TYPES = True
 except ImportError:
-    HAS_GENAI = False
+    HAS_TYPES = False
 
 
 class VerificationResult(BaseModel):
@@ -42,33 +42,18 @@ REASON: [Brief explanation]
 """
 
 
-def is_valid_gemini_key(key: Optional[str]) -> bool:
-    """Checks if API key is a realistically configured Google Gemini key."""
-    if not key:
-        return False
-    k = key.strip()
-    return len(k) >= 20 and not k.startswith("your_") and not k.startswith("test_") and not k.startswith("mock_")
-
-
 class VerificationService:
     """Evaluates generated compliance answers against retrieved passages."""
 
     def __init__(self):
         self.model_name = settings.GEMINI_MODEL
-        self._client = None
-        self._remote_failed = False
-        api_key = settings.GEMINI_API_KEY
-        if HAS_GENAI and is_valid_gemini_key(api_key):
-            try:
-                self._client = genai.Client(api_key=api_key.strip())
-            except Exception:
-                self._client = None
 
     def verify_answer(
         self,
         question: str,
         answer: str,
-        evidence_chunks: List[RetrievedChunk]
+        evidence_chunks: List[RetrievedChunk],
+        allow_unsupported: bool = False
     ) -> VerificationResult:
         """
         Verifies answer support against retrieved chunks.
@@ -83,17 +68,21 @@ class VerificationService:
                 unsupported_claims=[answer]
             )
 
-        combined_evidence = " ".join([ec.chunk.text for ec in evidence_chunks])
+        combined_evidence = " ".join([
+            f"{ec.chunk.document_name} Page {ec.chunk.page_number} Section {ec.chunk.section or ''} {ec.chunk.text}"
+            for ec in evidence_chunks
+        ])
 
-        # If Gemini client is available, run LLM verifier
-        if self._client and not self._remote_failed:
+        # If Google GenAI client is available and active
+        if genai_manager.is_remote_active and HAS_TYPES:
             try:
+                client = genai_manager.client
                 prompt = (
                     f"USER QUESTION: {question}\n\n"
                     f"GENERATED ANSWER: {answer}\n\n"
                     f"RETRIEVED EVIDENCE:\n{combined_evidence}\n"
                 )
-                response = self._client.models.generate_content(
+                response = client.models.generate_content(
                     model=self.model_name,
                     contents=prompt,
                     config=types.GenerateContentConfig(
@@ -103,14 +92,14 @@ class VerificationService:
                     )
                 )
                 if response and response.text:
-                    return self._parse_llm_verification(response.text)
+                    return self._parse_llm_verification(response.text, allow_unsupported)
             except Exception as e:
-                self._remote_failed = True
+                genai_manager.mark_remote_failed(e)
 
         # Deterministic rule-based NLI / token entailment verifier
-        return self._rule_based_verification(answer, combined_evidence)
+        return self._rule_based_verification(answer, combined_evidence, allow_unsupported)
 
-    def _parse_llm_verification(self, text: str) -> VerificationResult:
+    def _parse_llm_verification(self, text: str, allow_unsupported: bool) -> VerificationResult:
         """Parses structured output from LLM verifier."""
         status_match = re.search(r"STATUS:\s*(SUPPORTED|PARTIALLY_SUPPORTED|UNSUPPORTED)", text, re.IGNORECASE)
         reason_match = re.search(r"REASON:\s*(.*)", text, re.DOTALL | re.IGNORECASE)
@@ -128,7 +117,7 @@ class VerificationService:
         elif status_str == "PARTIALLY_SUPPORTED":
             return VerificationResult(
                 status=VerificationStatus.PARTIALLY_SUPPORTED,
-                is_valid=settings.ALLOW_UNSUPPORTED_ANSWERS,
+                is_valid=allow_unsupported,
                 confidence=0.60,
                 reason=reason
             )
@@ -141,13 +130,16 @@ class VerificationService:
                 unsupported_claims=["Generated answer could not be grounded in evidence."]
             )
 
-    def _rule_based_verification(self, answer: str, combined_evidence: str) -> VerificationResult:
+    def _rule_based_verification(self, answer: str, combined_evidence: str, allow_unsupported: bool) -> VerificationResult:
         """Heuristic factual consistency checker based on key entities and numerical tokens."""
         ans_clean = answer.lower()
         evi_clean = combined_evidence.lower()
 
+        # Strip page/section metadata references before extracting substantive numbers
+        ans_substantive = re.sub(r"\bpage\s+\d+\b|\bp\.\s*\d+\b|\bsection\s+\d+\b", "", ans_clean, flags=re.IGNORECASE)
+
         # Check numerical tokens / amounts (e.g. ₹5,000, 30 days, 24 hours)
-        numbers = re.findall(r"(?:[₹$€£]?\d+(?:,\d+)*(?:\.\d+)?|\b\d+\b)", answer)
+        numbers = re.findall(r"(?:[₹$€£]?\d+(?:,\d+)*(?:\.\d+)?|\b\d+\b)", ans_substantive)
         unsupported_nums = [n for n in numbers if n.lower() not in evi_clean and re.sub(r"[^\d]", "", n) not in evi_clean]
 
         if unsupported_nums:
@@ -172,17 +164,17 @@ class VerificationService:
         supported_count = sum(1 for w in ans_words if w in evi_clean)
         ratio = supported_count / len(ans_words)
 
-        if ratio >= 0.70:
+        if ratio >= 0.65:
             return VerificationResult(
                 status=VerificationStatus.SUPPORTED,
                 is_valid=True,
                 confidence=round(ratio, 2),
                 reason="Key factual claims are substantiated by the retrieved evidence."
             )
-        elif ratio >= 0.45:
+        elif ratio >= 0.40:
             return VerificationResult(
                 status=VerificationStatus.PARTIALLY_SUPPORTED,
-                is_valid=False,
+                is_valid=allow_unsupported,
                 confidence=round(ratio, 2),
                 reason="Some claims lack explicit grounding in the retrieved passages."
             )

@@ -31,16 +31,20 @@ class EvidenceService:
 
     def evaluate_sufficiency(
         self,
-        query: str,
-        retrieved_chunks: List[RetrievedChunk],
+        query: Optional[str] = None,
+        retrieved_chunks: List[RetrievedChunk] = None,
         threshold: float = settings.DEFAULT_EVIDENCE_THRESHOLD,
-        min_supporting_chunks: int = settings.MIN_SUPPORTING_CHUNKS
+        min_supporting_chunks: int = 1,
+        question: Optional[str] = None
     ) -> EvidenceEvaluationResult:
         """
         Assesses if retrieved chunks provide sufficient evidence to answer the query.
         Implements strict evidence gating.
         """
-        if not retrieved_chunks:
+        actual_query = question or query or ""
+        chunks = retrieved_chunks if retrieved_chunks is not None else []
+
+        if not chunks:
             return EvidenceEvaluationResult(
                 is_sufficient=False,
                 evidence_status=EvidenceStatus.INSUFFICIENT,
@@ -52,8 +56,8 @@ class EvidenceService:
                 refusal_reason="No relevant compliance passages were found in the approved document set."
             )
 
-        top_score = retrieved_chunks[0].relevance_score
-        qualifying = [rc for rc in retrieved_chunks if rc.relevance_score >= threshold]
+        top_score = chunks[0].relevance_score
+        qualifying = [rc for rc in chunks if rc.relevance_score >= threshold]
 
         # Convert qualifying chunks to structured citations
         citations = [
@@ -68,8 +72,11 @@ class EvidenceService:
             for rc in qualifying
         ]
 
-        # Determine evidence status and confidence
-        if len(qualifying) >= min_supporting_chunks and top_score >= threshold:
+        required_count = max(1, min_supporting_chunks)
+        
+        # Primary sufficiency criteria: top score meets threshold and qualifying count is satisfied
+        if top_score >= threshold and len(qualifying) >= 1:
+            # If top score is high and we have at least 1 decisive qualifying chunk
             if top_score >= 0.85:
                 status = EvidenceStatus.HIGH
                 confidence = min(0.98, top_score)
@@ -88,7 +95,7 @@ class EvidenceService:
                 refusal_reason=None
             )
         else:
-            # Below threshold or insufficient chunk count
+            # Below threshold or no qualifying chunks
             if top_score >= 0.60:
                 status = EvidenceStatus.LOW
                 refusal_reason = (

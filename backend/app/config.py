@@ -21,8 +21,8 @@ class Settings(BaseSettings):
     # API and Server
     APP_NAME: str = "CompliSure Backend"
     API_V1_PREFIX: str = "/api"
-    HOST: str = "0.0.0.0"
-    PORT: int = 8000
+    HOST: str = "127.0.0.1"
+    PORT: int = 8001
     DEBUG: bool = False
     CORS_ORIGINS: List[str] = [
         "http://localhost:3000",

@@ -13,7 +13,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 
 from backend.app.models.database import DocumentModel, ChunkModel, SessionLocal
-from backend.app.models.schemas import DocumentSummary, DocumentDetail, ChunkMetadata, DocStatus
+from backend.app.models.schemas import DocumentSummary, DocumentDetail, ChunkMetadata, DocStatus, DocumentChunk
 from backend.app.services.pdf_service import pdf_service, PDFProcessingError
 from backend.app.services.chunking_service import chunking_service
 from backend.app.services.retrieval_service import vector_store
@@ -173,10 +173,35 @@ class DocumentService:
         logger.info(f"Deleted document ID: {document_id}")
         return True
 
+    def sync_vector_store_from_db(self, db: Session):
+        """Loads chunks from database into in-memory vector store if not already present."""
+        if len(vector_store.chunks) > 0:
+            return
+        
+        chunk_records = db.query(ChunkModel).all()
+        if not chunk_records:
+            return
+        
+        chunks = [
+            DocumentChunk(
+                chunk_id=c.id,
+                document_id=c.document_id,
+                document_name=c.document_name,
+                page_number=c.page_number,
+                section=c.section,
+                chunk_index=c.chunk_index,
+                text=c.text
+            )
+            for c in chunk_records
+        ]
+        vector_store.add_chunks(chunks)
+        logger.info(f"Loaded {len(chunks)} chunks from database into vector store.")
+
     def initialize_sample_documents(self, db: Session):
         """Generates realistic compliance policy PDFs and ingests them on first run."""
         existing = db.query(DocumentModel).count()
         if existing > 0:
+            self.sync_vector_store_from_db(db)
             return
 
         logger.info("Generating and indexing sample compliance policies...")
