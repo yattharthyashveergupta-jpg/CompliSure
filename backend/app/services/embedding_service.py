@@ -3,6 +3,7 @@ Embedding Service for CompliSure.
 Produces semantic dense vector embeddings with unified Google GenAI support and deterministic local embeddings.
 """
 from typing import List, Union
+import zlib
 import re
 import numpy as np
 from backend.app.config import settings
@@ -64,21 +65,21 @@ class EmbeddingService:
         for i, token in enumerate(raw_tokens):
             stem = re.sub(r"(?:ing|ed|es|s)$", "", token) if len(token) > 3 else token
             
-            idx1 = abs(hash(token)) % dim
+            idx1 = zlib.crc32(token.encode("utf-8")) % dim
             vec[idx1] += 3.0 + len(token) * 0.5
             
-            s_idx = abs(hash(stem)) % dim
+            s_idx = zlib.crc32(stem.encode("utf-8")) % dim
             vec[s_idx] += 4.0
 
             # Bigram
             if i < len(raw_tokens) - 1:
                 next_stem = re.sub(r"(?:ing|ed|es|s)$", "", raw_tokens[i+1]) if len(raw_tokens[i+1]) > 3 else raw_tokens[i+1]
-                idx2 = abs(hash(f"{stem}_{next_stem}")) % dim
+                idx2 = zlib.crc32(f"{stem}_{next_stem}".encode("utf-8")) % dim
                 vec[idx2] += 4.0
 
             # 3-char prefixes & suffixes for stem matching
             if len(token) >= 4:
-                p_idx = abs(hash(token[:4])) % dim
+                p_idx = zlib.crc32(token[:4].encode("utf-8")) % dim
                 vec[p_idx] += 2.0
 
         return vec.tolist()

@@ -28,6 +28,11 @@ _active_config = SafeguardConfig(
     response_model=SafeguardConfig,
     summary="Get active safeguard configuration"
 )
+@router.get(
+    "/config",
+    response_model=SafeguardConfig,
+    include_in_schema=False
+)
 def get_safeguard_config():
     """Retrieves current evidence thresholds, verification policies, and active safeguard mode."""
     return _active_config
@@ -38,6 +43,16 @@ def get_safeguard_config():
     response_model=SafeguardConfig,
     status_code=status.HTTP_200_OK,
     summary="Update safeguard parameters"
+)
+@router.post(
+    "/config",
+    response_model=SafeguardConfig,
+    include_in_schema=False
+)
+@router.put(
+    "/config",
+    response_model=SafeguardConfig,
+    include_in_schema=False
 )
 def update_safeguard_config(config: SafeguardConfig):
     """Dynamically updates evidence threshold, citation requirements, and verification parameters."""

@@ -179,6 +179,18 @@ class SafeguardConfig(BaseModel):
     chunk_size: int = Field(400, ge=100, le=2000)
     chunk_overlap: int = Field(50, ge=0, le=500)
 
+    def __init__(self, **data):
+        # Support relevance_threshold as alias for evidence_threshold
+        if "relevance_threshold" in data and "evidence_threshold" not in data:
+            data["evidence_threshold"] = data.pop("relevance_threshold")
+        if "safeguard_mode" in data and "default_mode" not in data:
+            data["default_mode"] = data.pop("safeguard_mode")
+        if "require_citation" in data and "require_source_citation" not in data:
+            data["require_source_citation"] = data.pop("require_citation")
+        if "enable_verification" in data and "enable_answer_verification" not in data:
+            data["enable_answer_verification"] = data.pop("enable_verification")
+        super().__init__(**data)
+
 
 # Evaluation Models
 class EvaluationTestCase(BaseModel):

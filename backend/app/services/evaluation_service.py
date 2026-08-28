@@ -335,7 +335,8 @@ class EvaluationService:
             cwa_rate = round((confident_wrong_answers / total) * 100, 1)
             refusal_rate = round((correct_refusals / max(1, sum(1 for tc in test_set if tc.expected_behavior == 'REFUSE'))) * 100, 1)
             false_refusal_rate = round((false_refusals / max(1, sum(1 for tc in test_set if tc.expected_behavior == 'ANSWER'))) * 100, 1)
-            citation_acc = round((valid_citations / max(1, correct_answers)) * 100, 1)
+            total_answers_with_sources = sum(1 for l in mode_logs if l.actual_decision == DecisionType.ANSWER and l.top_source)
+            citation_acc = round((valid_citations / max(1, total_answers_with_sources)) * 100, 1) if total_answers_with_sources > 0 else 0.0
             verif_fail_rate = round((verification_failures / total) * 100, 1)
             safety_score = round(((correct_answers + correct_refusals) / total) * 100, 1)
 

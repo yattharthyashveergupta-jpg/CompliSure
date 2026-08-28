@@ -101,7 +101,7 @@ class AnswerService:
                     model=self.model_name,
                     contents=prompt,
                     config=types.GenerateContentConfig(
-                        temperature=0.7,
+                        temperature=0.0,
                         max_output_tokens=300
                     )
                 )
